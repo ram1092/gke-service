@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: gke-service
+server:
+  port : 8080

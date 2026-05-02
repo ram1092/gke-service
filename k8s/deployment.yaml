@@ -1,0 +1,19 @@
+apiVersion: apps/v1        # We are creating a Deployment resource
+kind: Deployment          # Type of k8s object
+metadata:
+  name: hello-app-deployment    # Name of deployment
+spec:
+  replicas: 1                  # Number of pods you want running
+  selector:
+    matchLabels:
+      app: hello-app            # Must match pod label
+  template:                   # Template for pod creation
+    metadata:
+      labels:
+        app: hello-app         # Label attached to pod
+    spec:
+      containers:
+        - name: hello-app-container
+          image: us-central1-docker.pkg.dev/gke-ram-project-001/gke-repo/hello-app:latest
+          ports:
+            - containerPort: 8080  # Port your Spring Boot runs on INSIDE pod
