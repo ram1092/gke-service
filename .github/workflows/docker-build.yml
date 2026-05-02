@@ -1,0 +1,29 @@
+name: Maven Build and Docker Image (CI)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:   # allows manual run from UI
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Build JAR with Maven
+        run: mvn clean package -DskipTests
+
+      - name: Build Docker image
+        run: docker build -t hello-app:latest .
+
+      - name: Verify Docker image
+        run: docker images
