@@ -12,6 +12,7 @@ env:
   IMAGE: hello-app
   CLUSTER: gke-cluster
   ZONE: us-central1-a
+  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
 
 jobs:
 
@@ -28,10 +29,7 @@ jobs:
           java-version: 17
 
       - name: Maven Package
-        run: |
-          echo "===== Building JAR ====="
-          mvn clean package -DskipTests
-          ls -lh target
+        run: mvn clean package -DskipTests
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
@@ -59,25 +57,21 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Set up gcloud SDK
+      - name: Set up gcloud SDK (includes kubectl & GKE auth)
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
+          install_components: "kubectl"
 
       - name: Configure Docker for Artifact Registry
-        run: |
-          echo "===== Docker Auth for Artifact Registry ====="
-          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
       - name: Docker Build
         run: |
-          echo "===== Building Docker Image ====="
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest .
-          docker images
 
       - name: Docker Push
         run: |
-          echo "===== Pushing Docker Image ====="
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest
 
 
@@ -94,18 +88,19 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Set up gcloud SDK (includes GKE auth)
+      - name: Set up gcloud SDK (includes kubectl & GKE auth)
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
+          install_components: "kubectl"
 
-      - name: Get GKE Credentials
+      - name: Fetch GKE Credentials (new auth mode)
         run: |
           gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
 
       - name: Deploy to GKE
         run: |
-          echo "===== Deploying to GKE ====="
           kubectl apply -f k8s/
+          kubectl rollout status deployment --all
           kubectl get pods
           kubectl get svc
