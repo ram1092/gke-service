@@ -3,9 +3,10 @@ kind: Service
 metadata:
   name: hello-app-service
 spec:
-  type: LoadBalancer       # Ask GKE to create Public Load Balancer
+  type: LoadBalancer
   selector:
-    app: hello-app          # Find pods with this label
+    app: hello-app
+
   ports:
-    - port: 80            # Public port exposed to internet
-      targetPort: 8080     # Pod port where Spring Boot runs
+    - port: 80
+      targetPort: 8080

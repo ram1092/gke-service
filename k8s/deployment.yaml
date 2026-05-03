@@ -15,5 +15,6 @@ spec:
       containers:
         - name: hello-app-container
           image: us-central1-docker.pkg.dev/gke-ram-project-001/gke-repo/hello-app:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080  # Port your Spring Boot runs on INSIDE pod

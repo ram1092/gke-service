@@ -12,12 +12,12 @@ env:
   IMAGE: hello-app
   CLUSTER: gke-cluster
   ZONE: us-central1-a
-  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
 
 jobs:
 
+  # ---------------- STAGE 1 : MAVEN BUILD ----------------
   build:
-    name: Build JAR
+    name: Stage 1 - Maven Build
     runs-on: ubuntu-latest
 
     steps:
@@ -28,18 +28,22 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Maven Package
-        run: mvn clean package -DskipTests
+      - name: Build JAR
+        run: |
+          echo "===== Building JAR ====="
+          mvn clean package -DskipTests
+          echo "===== JAR Build Completed ====="
 
-      - name: Upload JAR
+      - name: Upload JAR Artifact
         uses: actions/upload-artifact@v4
         with:
           name: jar-file
           path: target/*.jar
 
 
+  # ---------------- STAGE 2 : DOCKER BUILD & PUSH ----------------
   docker:
-    name: Docker Build and Push
+    name: Stage 2 - Docker Build & Push
     runs-on: ubuntu-latest
     needs: build
 
@@ -52,55 +56,71 @@ jobs:
           name: jar-file
           path: target
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Set up gcloud SDK (includes kubectl & GKE auth)
+      - name: Setup gcloud (kubectl included)
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-          install_components: "kubectl"
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
-
-      - name: Docker Build
         run: |
+          echo "===== Docker Auth to Artifact Registry ====="
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+
+      - name: Build Docker Image
+        run: |
+          echo "===== Building Docker Image ====="
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest .
 
-      - name: Docker Push
+      - name: Push Docker Image
         run: |
+          echo "===== Pushing Docker Image ====="
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest
+          echo "===== Docker Push Completed ====="
+  
 
-
+  # ---------------- STAGE 3 : DEPLOY TO GKE ----------------
   deploy:
-    name: Deploy to GKE
+    name: Stage 3 - Deploy to GKE
     runs-on: ubuntu-latest
     needs: docker
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - name: Set up gcloud SDK (includes kubectl & GKE auth)
+      - name: Setup gcloud (kubectl + gke auth plugin)
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
-          install_components: "kubectl"
+          install_components: "gke-gcloud-auth-plugin"
 
-      - name: Fetch GKE Credentials (new auth mode)
+      - name: Get GKE Credentials
         run: |
+          echo "===== Fetching GKE Credentials ====="
           gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
 
-      - name: Deploy to GKE
+      - name: Apply Kubernetes Manifests
         run: |
+          echo "===== Applying K8s Files ====="
           kubectl apply -f k8s/
-          kubectl rollout status deployment --all
-          kubectl get pods
+
+      - name: Wait for Deployment Rollout
+        run: |
+          echo "===== Waiting for Deployment to be Ready ====="
+          kubectl rollout status deployment/hello-app-deployment
+
+      - name: Verify Pods and Service
+        run: |
+          echo "===== Pods ====="
+          kubectl get pods -o wide
+          echo "===== Services ====="
           kubectl get svc
