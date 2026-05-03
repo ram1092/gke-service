@@ -5,6 +5,11 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
+# ✅ REQUIRED FOR OIDC (MOST IMPORTANT FIX)
+permissions:
+  id-token: write
+  contents: read
+
 env:
   PROJECT_ID: gke-ram-project-001
   REGION: us-central1
@@ -29,10 +34,7 @@ jobs:
           java-version: 17
 
       - name: Build JAR
-        run: |
-          echo "===== Building JAR ====="
-          mvn clean package -DskipTests
-          echo "===== JAR Build Completed ====="
+        run: mvn clean package -DskipTests
 
       - name: Upload JAR Artifact
         uses: actions/upload-artifact@v4
@@ -56,13 +58,12 @@ jobs:
           name: jar-file
           path: target
 
-      # ❌ OLD KEY BASED AUTH (REMOVE)
-      # - name: Authenticate to GCP
-      #   uses: google-github-actions/auth@v2
+      # ❌ OLD KEY BASED AUTH (DO NOT USE)
+      # - uses: google-github-actions/auth@v2
       #   with:
       #     credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      # ✅ NEW OIDC AUTH
+      # ✅ OIDC AUTH
       - name: Authenticate to GCP using OIDC
         uses: google-github-actions/auth@v2
         with:
@@ -75,20 +76,15 @@ jobs:
           project_id: ${{ env.PROJECT_ID }}
 
       - name: Configure Docker for Artifact Registry
-        run: |
-          echo "===== Docker Auth to Artifact Registry ====="
-          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
       - name: Build Docker Image
         run: |
-          echo "===== Building Docker Image ====="
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest .
 
       - name: Push Docker Image
         run: |
-          echo "===== Pushing Docker Image ====="
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest
-          echo "===== Docker Push Completed ====="
 
 
   # ---------------- STAGE 3 : DEPLOY TO GKE ----------------
@@ -100,20 +96,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ❌ OLD KEY BASED AUTH (REMOVE)
-      # - name: Authenticate to GCP
-      #   uses: google-github-actions/auth@v2
+      # ❌ OLD KEY BASED AUTH (DO NOT USE)
+      # - uses: google-github-actions/auth@v2
       #   with:
       #     credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      # ✅ NEW OIDC AUTH
+      # ✅ OIDC AUTH
       - name: Authenticate to GCP using OIDC
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.SERVICE_ACCOUNT }}
 
-      - name: Setup gcloud (kubectl + gke auth plugin)
+      - name: Setup gcloud with GKE plugin
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.PROJECT_ID }}
@@ -121,22 +116,15 @@ jobs:
 
       - name: Get GKE Credentials
         run: |
-          echo "===== Fetching GKE Credentials ====="
           gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
 
       - name: Apply Kubernetes Manifests
-        run: |
-          echo "===== Applying K8s Files ====="
-          kubectl apply -f k8s/
+        run: kubectl apply -f k8s/
 
       - name: Wait for Deployment Rollout
-        run: |
-          echo "===== Waiting for Deployment to be Ready ====="
-          kubectl rollout status deployment/hello-app-deployment
+        run: kubectl rollout status deployment/hello-app-deployment
 
       - name: Verify Pods and Service
         run: |
-          echo "===== Pods ====="
           kubectl get pods -o wide
-          echo "===== Services ====="
           kubectl get svc
