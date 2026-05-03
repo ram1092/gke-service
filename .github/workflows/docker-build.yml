@@ -24,10 +24,19 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - run: |
+
+      - name: Build JAR
+        run: |
           echo "Building JAR..."
           mvn clean package -DskipTests
           echo "Maven build completed"
+
+      # ✅ Upload JAR for next job
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: target/*.jar
 
   docker:
     name: 🐳 Stage 2 - Docker Build & Push
@@ -36,21 +45,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ✅ Download JAR from previous job
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-jar
+          path: target
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - run: |
+      - name: Configure Docker for Artifact Registry
+        run: |
           echo "Configuring docker for Artifact Registry"
-          gcloud auth configure-docker $REGION-docker.pkg.dev
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
 
-      - run: |
+      - name: Build Docker image
+        run: |
           echo "Building Docker image"
           docker build -t $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest .
 
-      - run: |
-          echo "Pushing Docker image to Artifact Registry"
+      - name: Push Docker image
+        run: |
+          echo "Pushing Docker image"
           docker push $REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE:latest
           echo "Docker push completed"
 
@@ -66,11 +85,13 @@ jobs:
         with:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
 
-      - run: |
+      - name: Get GKE credentials
+        run: |
           echo "Fetching GKE credentials"
           gcloud container clusters get-credentials $CLUSTER --zone $ZONE --project $PROJECT_ID
 
-      - run: |
+      - name: Deploy to GKE
+        run: |
           echo "Applying Kubernetes manifests"
           kubectl apply -f k8s/
           echo "Deployment applied to GKE"
